@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=2]
+
+[ext_resource path="res://addons/FlowField/FlowField.gd" type="Script" id=1]
+[ext_resource path="res://Test.tres" type="TileSet" id=2]
+
+[node name="FlowField" type="TileMap"]
+tile_set = ExtResource( 2 )
+format = 1
+script = ExtResource( 1 )
+allow_diagonals = false
+diagonals_need_neighbors = false
+"tile_costs/icon.png 0" = 1
+"tile_costs/Gras.png 1" = 1
+"tile_costs/Lake.png 2" = 1
+"tile_costs/Mountain.png 3" = 1
