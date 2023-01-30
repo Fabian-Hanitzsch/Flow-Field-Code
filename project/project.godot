@@ -30,6 +30,10 @@ config/name="Flow Field as Module"
 run/main_scene="res://Test.tscn"
 config/icon="res://icon.png"
 
+[autoload]
+
+SignalBus="*res://SignalBus.gd"
+
 [editor_plugins]
 
 enabled=PoolStringArray( "res://addons/FlowField/plugin.cfg" )
@@ -54,6 +58,11 @@ reset_cost_map={
 reduce_map_size={
 "deadzone": 0.5,
 "events": [ Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"control":false,"meta":false,"command":false,"pressed":false,"scancode":80,"unicode":0,"echo":false,"script":null)
+ ]
+}
+reset_cell={
+"deadzone": 0.5,
+"events": [ Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"control":false,"meta":false,"command":false,"pressed":false,"scancode":69,"unicode":0,"echo":false,"script":null)
  ]
 }
 

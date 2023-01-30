@@ -30,6 +30,7 @@ class FlowField : public godot::Node2D {
 
 
 	std::vector<std::vector<std::vector<int>>> direction_distance;
+	std::vector<std::vector<std::vector<int>>> new_cells_to_consider;
 
 	godot::Dictionary changed_costs;
 
@@ -68,9 +69,9 @@ public:
 	godot::Vector2 get_cell_direction(godot::Vector2);
 
 	int get_cell_distance(godot::Vector2);
-	void create_flow_field(godot::Array, godot::Array);
+	void create_flow_field(godot::Array, godot::Array, int);
 	static void _register_methods();
-	void set_play_field(godot::TileMap*, godot::Dictionary);
+	void set_play_field(godot::TileMap*, godot::Dictionary, int, int, int);
 
 	godot::Vector2 FlowField::get_direction(godot::Vector2, bool, godot::Vector2);
 
@@ -87,7 +88,7 @@ private:
 	bool is_in_play_field(std::vector<int>);
 	void reset_maps();
 	void find_start_cells(godot::Array&);
-	void find_target_cells(godot::Array&);
+	void find_target_cells(godot::Array&, int);
 	void visit_current_cost_cells(std::vector<std::vector<int>>&, int&);
 	void FlowField::reset_target_cells(godot::Array&);
 	void FlowField::visit_neighbors(std::vector<int>&);

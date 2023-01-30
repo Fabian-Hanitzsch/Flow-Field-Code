@@ -36,7 +36,7 @@ godot::Vector2 FlowField::get_direction(godot::Vector2 position, bool consider_t
 	offset_position[0] = ((fmod(position.x, cell_size[0]) / cell_size[0])  - 0.5 * ( (0 <= position.x) - (position.x < 0))) * cost_map[cell[0]][cell[1]];
 	offset_position[1] = ((fmod(position.y, cell_size[1]) / cell_size[1])  - 0.5 * ( (0 <= position.y) - (position.y < 0))) * cost_map[cell[0]][cell[1]];
 
-	//todo: update direction based on if the target is visible from the cell
+
 	direction.x = direction_distance[cell[0]][cell[1]][0] - offset_position[0];
 	direction.y = direction_distance[cell[0]][cell[1]][1] - offset_position[1];
 
@@ -85,11 +85,10 @@ godot::Vector2 FlowField::get_direction(godot::Vector2 position, bool consider_t
 }
 
 
-void FlowField::set_play_field(godot::TileMap* tile_map_s, godot::Dictionary cost_of_tiles_s){
+void FlowField::set_play_field(godot::TileMap* tile_map_s, godot::Dictionary cost_of_tiles_s,
+								 int allocation_cells_visited, int allocation_target_cells, int allocation_cells_calculation){
 	tile_map = tile_map_s;
 	
-	all_interesting_cells = std::vector<std::vector<std::vector<int>>>(max_cost_of_a_tile, std::vector<std::vector<int>>(100,std::vector<int>(2,0)));
-	cells_visited = std::vector<std::vector<int>>(1000, std::vector<int>(2,0));
 	godot::Rect2 used_rect = tile_map->get_used_rect();
 	godot::Vector2 used_cell_size = tile_map->get_cell_size();
 	cost_of_tiles = cost_of_tiles_s;
@@ -108,6 +107,9 @@ void FlowField::set_play_field(godot::TileMap* tile_map_s, godot::Dictionary cos
 
 	create_maps(size_x, size_y);
 	fill_cost_map();
+	all_interesting_cells = std::vector<std::vector<std::vector<int>>>(max_cost_of_a_tile, std::vector<std::vector<int>>(allocation_cells_calculation,std::vector<int>(2,0)));
+	cells_visited = std::vector<std::vector<int>>(allocation_cells_visited, std::vector<int>(2,0));
+	new_cells_to_consider = std::vector<std::vector<std::vector<int>>>(2,std::vector<std::vector<int>>(allocation_target_cells, std::vector<int>(2,0)));
 }
 
 
@@ -142,7 +144,7 @@ void FlowField::update_cell_cost(int cell_x, int cell_y, int cell_cost){
 	cell_as_array[0] = cell_x + offset_x;
 	cell_as_array[1] = cell_y + offset_y;
 
-	if (cell_x >= highest_x) {
+	if (cell_x > highest_x) {
 		highest_x = cell_x;
 		need_resize = true;
 		
@@ -153,7 +155,7 @@ void FlowField::update_cell_cost(int cell_x, int cell_y, int cell_cost){
 		need_resize = true;
 		data_transfer = true;
 	}
-	if (cell_y >= highest_y) {
+	if (cell_y > highest_y) {
 		highest_y = cell_y;
 		need_resize = true;
 		
@@ -197,6 +199,7 @@ void FlowField::update_cell_cost(int cell_x, int cell_y, int cell_cost){
 		new_size_x = (highest_x - lowest_x) + 1 + buffer_size * 2;
 		new_size_y = (highest_y - lowest_y) + 1 + buffer_size * 2;
 		expand_maps(new_size_x, new_size_y);
+		std::cout << "New dimension: " << new_size_x << ", " << new_size_y;
 	}
 
 	if(data_transfer) {
@@ -211,7 +214,7 @@ void FlowField::update_cell_cost(int cell_x, int cell_y, int cell_cost){
 }
 
 
-void FlowField::create_flow_field(godot::Array start_positions, godot::Array target_positions) {
+void FlowField::create_flow_field(godot::Array start_positions, godot::Array target_positions, int safety_margin) {
 	if(cost_map_needs_update){
 		update_cost_map();
 		cost_map_needs_update = false;
@@ -229,7 +232,7 @@ void FlowField::create_flow_field(godot::Array start_positions, godot::Array tar
 	find_start_cells(start_positions);
 	
 	target_cells_left = 0;
-	find_target_cells(target_positions);
+	find_target_cells(target_positions, safety_margin);
 	
 	// No target positions were given
 	if (target_cells_left == 0)
@@ -237,15 +240,19 @@ void FlowField::create_flow_field(godot::Array start_positions, godot::Array tar
 		target_cells_left = 1;
 	}
 	
+	
 
 	int current_nr_of_cells_to_check = 0;
 	while (interesting_cells_left > 0 && target_cells_left > 0)
 	{
+
 		current_nr_of_cells_to_check = nr_of_cells[current_cost_pointer];
 		visit_current_cost_cells(all_interesting_cells[current_cost_pointer], current_nr_of_cells_to_check);
 		current_cost_pointer = (current_cost_pointer + 1) % max_cost_of_a_tile;
 
 	}
+
+
 
 	if (target_cells_left > 0)
 	{
@@ -260,6 +267,8 @@ void FlowField::reduce_map_size(){
 	godot::Rect2 used_rect = tile_map->get_used_rect();
 	int lowest_x = used_rect.position.x;
 	int highest_x = used_rect.position.x + used_rect.size.x;
+
+	
 
 	int lowest_y = used_rect.position.y;
 	int highest_y = used_rect.position.y + used_rect.size.y;
@@ -313,15 +322,25 @@ void FlowField::reset_cost_map(){
 	for (int i = 0; i < keys.size(); i++)
 	{
 		godot::Vector2 cell = keys[i];
-
 		int cell_as_array[2] = {cell.x + offset_x, cell.y + offset_y};
 		godot::Dictionary tmp = cost_of_tiles[tile_map->get_cell(cell.x, cell.y)];
 		int cost_of_the_tile = tmp["cost"];
+		// does not exist
+		if (cost_of_the_tile == 0)
+		{
+			cost_of_the_tile = wall_cost;
+		}
+		
 		cost_map[cell_as_array[0]][cell_as_array[1]] = cost_of_the_tile;
+
 	}
+
+
 
 	special_cost_cells = godot::Dictionary();
 	changed_costs = godot::Dictionary();
+	keys = changed_costs.keys();
+	keys = special_cost_cells.keys();
 	
 }
 
@@ -386,7 +405,8 @@ void FlowField::find_start_cells(godot::Array &start_cells){
 
 
 		if(count_cells_visited >= cells_visited.size()){
-			cells_visited.resize(cells_visited.size() * 2, {0,0});
+			cells_visited.resize(cells_visited.size() + buffer_size, {0,0});
+			
 		}
 		cells_visited[count_cells_visited] = cell_as_vector;
 		count_cells_visited++;
@@ -406,7 +426,13 @@ void FlowField::find_start_cells(godot::Array &start_cells){
 	nr_of_cells[0] = interesting_cells_left;
 }
 
-void FlowField::find_target_cells(godot::Array &target_cells){
+void FlowField::find_target_cells(godot::Array &target_cells, int safety_margin){
+
+	// contains the list twice so that we can use the first one and save into the second one or vice versa
+	
+	int index_to_save = 0;
+	int index_to_read = 1;
+	int count_new_cells_to_consider = 0;
 	for (int i = 0; i < target_cells.size(); i++)
 	{
 		godot::Vector2 cell = target_cells[i];
@@ -421,13 +447,64 @@ void FlowField::find_target_cells(godot::Array &target_cells){
 		{
 			continue;
 		}
+		if (cost_map[cell_as_array[0]][cell_as_array[1]] == wall_cost){
+			continue;
+		}
+
 		if (!cells_to_visit[cell.x][cell.y])
 		{
 			cells_to_visit[cell.x][cell.y] = true;
+			new_cells_to_consider[index_to_save][count_new_cells_to_consider][0] = cell.x;
+			new_cells_to_consider[index_to_save][count_new_cells_to_consider][1] = cell.y;
+			count_new_cells_to_consider += 1;
+			if(count_new_cells_to_consider >= new_cells_to_consider[0].size()){
+				new_cells_to_consider[0].resize(new_cells_to_consider[0].size() + buffer_size, {0,0});
+				new_cells_to_consider[1].resize(new_cells_to_consider[1].size() + buffer_size, {0,0});
+			}
 			target_cells_left += 1;
 		}
+	}
+	int safety_count = 0;
+	while(safety_count < safety_margin && count_new_cells_to_consider >0){
+		
+		int current_count_new_cells_to_consider = count_new_cells_to_consider;
+		count_new_cells_to_consider = 0;
+		index_to_save = safety_count % 2 == 0;
+		index_to_read = safety_count % 2 == 1;
+		
+		for (int i = 0; i < current_count_new_cells_to_consider; i++)
+		{
+			int target_cell_as_array[2] = {new_cells_to_consider[index_to_read][i][0], new_cells_to_consider[index_to_read][i][1]};
+			for (int j = 0; j < 4; j++)
+			{
+				int cell_as_array[2] = {target_cell_as_array[0] + four_directions[j][0], target_cell_as_array[1] + four_directions[j][1]};
+
+				if (!is_in_play_field(cell_as_array))
+			{
+				continue;
+			}
+			if (cost_map[cell_as_array[0]][cell_as_array[1]] == wall_cost){
+				continue;
+				}
+				if (!cells_to_visit[cell_as_array[0]][cell_as_array[1]])
+				{
+					cells_to_visit[cell_as_array[0]][cell_as_array[1]] = true;
+					new_cells_to_consider[index_to_save][count_new_cells_to_consider][0] = cell_as_array[0];
+					new_cells_to_consider[index_to_save][count_new_cells_to_consider][1] = cell_as_array[1];
+					count_new_cells_to_consider += 1;
+					if(count_new_cells_to_consider >= new_cells_to_consider[0].size()){
+						new_cells_to_consider[0].resize(new_cells_to_consider[0].size() + buffer_size, {0,0});
+						new_cells_to_consider[1].resize(new_cells_to_consider[1].size() + buffer_size, {0,0});
+					}
+					target_cells_left += 1;
+				}
+			}
+			
+		}
+		safety_count += 1;
 		
 	}
+
 }
 
 bool FlowField::both_sides_free(std::vector<int> &interesting_cell, std::vector<int> &direction){
@@ -570,8 +647,9 @@ void FlowField::visit_neighbor(std::vector<int> &interesting_cell, int direction
 	if (new_distance_to_cell < old_distance){
 		if (old_distance == max_distance){
 			if(count_cells_visited >= cells_visited.size()){
-				cells_visited.resize(cells_visited.size() * 2, {0,0});
+				cells_visited.resize(cells_visited.size() + buffer_size, {0,0});
 			}
+			
 			cells_visited[count_cells_visited][0] = neighbor[0];
 			cells_visited[count_cells_visited][1] = neighbor[1];
 			count_cells_visited++;
@@ -587,7 +665,7 @@ void FlowField::visit_neighbor(std::vector<int> &interesting_cell, int direction
 
 		if (nr_of_cells[new_distance_as_cost_pointer] >= all_interesting_cells[new_distance_as_cost_pointer].size())
 		{
-			all_interesting_cells[new_distance_as_cost_pointer].resize(all_interesting_cells[new_distance_as_cost_pointer].size() * 2, {0,0});
+			all_interesting_cells[new_distance_as_cost_pointer].resize(all_interesting_cells[new_distance_as_cost_pointer].size() + buffer_size, {0,0});
 		}
 
 		
@@ -719,6 +797,7 @@ void FlowField::expand_maps(int target_size_x, int target_size_y){
 
 void FlowField::update_cost_map(){
 	godot::Array keys = special_cost_cells.keys();
+
 	for(int i=0; i<keys.size(); i++){
 		godot::Vector2 cell = keys[i];
 		int cell_as_array[2];
